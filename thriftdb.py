@@ -36,18 +36,18 @@ ch.setFormatter(formatter)
 
 logger.addHandler(ch)
 
-class ThriftDbAPI(object):
-	"""An abstraction for ThriftDB Rest API	
-	"""
+#module constant
+_THRIFTDB_API_DOMAIN = "api.thriftdb.com"
 
-	def __init__(self, domain="api.thriftdb.com"):
+class BucketAPI(object):
+	"""Abstraction of the ThriftDB Bucket API
+
+		see http://www.thriftdb.com/documentation/rest-api/bucket-api
+	"""
+	def __init__(self, domain=_THRIFTDB_API_DOMAIN):
 		self.domain = domain
 
 	def _bucket_api(self, bucket, method):
-		"""Calls the ThriftDB Bucket API
-
-		see http://www.thriftdb.com/documentation/rest-api/bucket-api
-		"""
 		conn = httplib.HTTPConnection(self.domain)
 		conn.request(method, urllib.quote("/" + bucket))
 		try:
@@ -55,23 +55,29 @@ class ThriftDbAPI(object):
 			logger.info(response.read())
 		finally:
 			conn.close()
-		logger.info("Response status code: %s" % (str(response.status)))
+		logger.info("Response status code: %i" % (response.status))
 		return response.status
 
-	def create_bucket(self, bucket):
+	def create(self, bucket):
 		"""Returns true if bucket created else false if there was an error"""
-		status = self._bucket_api(bucket, "PUT")		
+		status = self._bucket_api(bucket, 'PUT')		
 		return status == httplib.CREATED
 
-	def read_bucket(self, bucket):
+	def read(self, bucket):
 		"""Returns true if bucket exists else false if there was an error"""
-		status = self._bucket_api(bucket, "GET")
+		status = self._bucket_api(bucket, 'GET')
 		return status == httplib.OK
 
-	def delete_bucket(self, bucket):
+	def delete(self, bucket):
 		"""Returns true if bucket deleted else false if there was an error"""
-		status = self._bucket_api(bucket, "DELETE")
+		status = self._bucket_api(bucket, 'DELETE')
 		return status == httplib.OK
+
+class SearchAPI(object):
+	"""Abstraction for ThriftDB Search API	
+	"""
+	def __init__(self, domain=_THRIFTDB_API_DOMAIN):
+		self.domain = domain
 
 	def search(self, bucket, collection, query=None):
 		"""Calls the ThriftDB Search API.
@@ -80,8 +86,11 @@ class ThriftDbAPI(object):
 		"""
 		if not query: query={}
 		conn = httplib.HTTPConnection(self.domain)
-		resource = urllib.quote("/" + bucket + "/" + collection + "/_search") + "?" + urllib.urlencode(query)
-		conn.request("GET", resource)
+		resource = '/%s/%s/_search?%s' % (
+						urllib.quote(bucket), 
+						urllib.quote(collection),
+						urllib.urlencode(query))
+		conn.request('GET', resource)
 		try:
 			response = conn.getresponse()
 			data = _parse_json(response.read())
@@ -89,8 +98,12 @@ class ThriftDbAPI(object):
 			conn.close()
 		return data
 
-if __name__ == "__main__":
-	api = ThriftDbAPI()
+if __name__ == '__main__':
 	#api.create_bucket("test_bucket")
 	#api.delete_bucket("test_bucket")
-	#print api.search("api.hnsearch.com", "items", {"sortby" : "create_ts asc", "filter[fields][type]" : "submission"})
+	searchApi = SearchAPI()
+	print searchApi.search('api.hnsearch.com', 'items', 
+			{
+				'sortby' : 'create_ts asc', 
+				'filter[fields][type]' : 'submission'
+			})
