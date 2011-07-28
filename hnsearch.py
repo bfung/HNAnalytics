@@ -91,13 +91,16 @@ def scrape_users(hnsearch, low_dt, high_dt):
 def dump_users(file_obj, items):
 	for item in items:
 		ui = item['item']
-		dt = datetime.strptime(ui['create_ts'], '%Y-%m-%dT%H:%M:%SZ')
-		file_obj.write('%s, %s\n' %(ui['username'], dt))
+		#dt = datetime.strptime(ui['create_ts'], '%Y-%m-%dT%H:%M:%SZ')
+		file_obj.write('%s,%s\n' %(ui['username'], ui['create_ts']))
 
 def tail(f, n, offset=None):
 	"""Reads a n lines from f with an offset of offset lines.  The return
 	value is a tuple in the form ``(lines, has_more)`` where `has_more` is
 	an indicator that is `True` if there are more lines in the file.
+	
+	Stolen from some StackOverflow post about tail in python, 
+	and nuked tuple return value, i don't care about has_more, it looks buggy.
 	"""
 	avg_line_length = 74
 	to_read = n + (offset or 0)
@@ -128,8 +131,9 @@ def main(users_file='hn_users.csv'):
 		with open(users_file, 'r') as f:
 			last_line = tail(f, 1)
 			if len(last_line) == 1:
-				parts = last_line[0].split(' ')
-				low_dt = '%sT%sZ' % (parts[1], parts[2])
+				#parts = last_line[0].split(' ')
+				#low_dt = '%sT%sZ' % (parts[1], parts[2])
+				low_dt = last_line[0].split(',')[1]
 
 	with open(users_file, 'a') as f:
 		left, items, low_dt = scrape_users(hnsearch, low_dt, high_dt)
