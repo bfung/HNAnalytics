@@ -19,7 +19,7 @@ logger.setLevel(logging.INFO)
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 
-formatter = logging.Formatter('%(asctime)s- %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
 ch.setFormatter(formatter)
 
@@ -138,13 +138,15 @@ def main(users_file='hn_users.csv'):
 	with open(users_file, 'a') as f:
 		left, items, low_dt = scrape_users(hnsearch, low_dt, high_dt)
 		dump_users(f, items)
-		logger.info('Processed %i users, %i users remaining.' % (len(items), left))
+		logger.info('Processed %i users, %i users remaining.' % 
+                    (len(items), left))
 		while left > 0:
 			#try not to hammer the site
-			time.sleep(0.9)
+			time.sleep(1)
 			left, items, low_dt = scrape_users(hnsearch, low_dt, high_dt)
 			dump_users(f, items)
-			logger.info('Processed %i users, %i users remaining.' % (len(items), left))
+			logger.info('Processed %i users, %i users remaining.' % 
+                        (len(items), left))
 	
 	print 'Finished, took %s.' % timedelta(seconds=(time.time() - start_time))
 	
