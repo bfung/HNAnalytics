@@ -7,8 +7,8 @@ databases.
 The scripts incrementally scrape based on the last date scraped.  A full 
 download currently takes:
 
-users : 77,000 items, ~25 minutes, 6 MB database (w/indicies)
-submissions : 430,000 items, ~3.5 hours, 147 MB database (w/indicies)
++ users : 77,000 items, ~25 minutes, 6 MB database (w/indicies)
++ submissions : 430,000 items, ~3.5 hours, 147 MB database (w/indicies)
 
 Database downloads will be available later.
 
