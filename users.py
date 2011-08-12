@@ -83,19 +83,21 @@ def download_loop(db, last_dt=None):
 	logger.debug('start: %i, limit: %i, low_dt: %s, high_dt: %s' % (start, limit, low_dt, high_dt))
 	left, items, last_dt = scrape(searchApi, start, limit, low_dt, high_dt, db)
 	items_cnt = len(items)
-	logger.info('Processed %i items, %i items remaining.' % (items_cnt, left - start))
+	remaining = left - start
+	logger.info('Processed %i items, %i items remaining.' % (items_cnt, remaining))
 	start += items_cnt
 	if start >= 1000:
 		low_dt = last_dt
 		start = 0
-	while left > 0:
+	while remaining > 0:
 		#try not to hammer the site
 		time.sleep(1)
 		logger.debug('start: %i, limit: %i, low_dt: %s, high_dt: %s' % (start, limit, low_dt, high_dt))
 		left, items, last_dt = scrape(searchApi, start, limit, low_dt, high_dt, db)
 		items_cnt = len(items)
+		remaining = left - start
 		logger.info('Processed %i items, %i items remaining.' % 
-					(items_cnt, left - start))
+					(items_cnt, remaining))
 		start += items_cnt
 		if start >= 1000:
 			low_dt = last_dt

@@ -47,8 +47,16 @@ def scrape(searchApi, start, limit, low_dt, high_dt, db):
 		ui = item['item']
 		#dt = datetime.strptime(ui['create_ts'], '%Y-%m-%dT%H:%M:%SZ')
 		#file_obj.write('%s,%s\n' %(ui['username'], ui['create_ts']))
-		db.execute(
-			"""INSERT OR IGNORE INTO submissions (
+        cur = db.cursor()
+        cur.execute(
+            """SELECT COUNT(id) FROM submissions WHERE id = ?""", (ui['id'],))
+        row = cur.fetchone()
+        if row and row[0] > 0:
+            cur.execute("""UPDATE OR IGNORE submissions SET points = ?
+                WHERE id = ?""", (ui['points'], ui['id']))
+        else:
+            cur.execute(
+			    """INSERT OR IGNORE INTO submissions (
 					id,
 					points,
 					username, 
@@ -60,6 +68,7 @@ def scrape(searchApi, start, limit, low_dt, high_dt, db):
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
 				(ui['id'], ui['points'], ui['username'], ui['url'], 
 				 ui['domain'], ui['title'], ui['text'], ui['create_ts']))
+        cur.close()
 	db.commit()
 	
 	item_cnt = len(items)
@@ -107,25 +116,31 @@ def download_loop(db, last_dt=None):
 	
 	start = 0
 	limit = 100
-	low_dt = toJSON(datetime(1900, 1, 1)) if not last_dt else last_dt
+    
+	low_dt = toJSON(datetime(1900, 1, 1))
+	if last_dt is not None:
+		dt = datetime.strptime(last_dt, '%Y-%m-%dT%H:%M:%SZ')
+		low_dt = toJSON(dt + timedelta(days=-5))
 	high_dt = toJSON(datetime.now() + timedelta(days=5))
 
 	logger.debug('start: %i, limit: %i, low_dt: %s, high_dt: %s' % (start, limit, low_dt, high_dt))
 	left, items, last_dt = scrape(searchApi, start, limit, low_dt, high_dt, db)
 	items_cnt = len(items)
-	logger.info('Processed %i items, %i items remaining.' % (items_cnt, left - start))
+	remaining = left - start
+	logger.info('Processed %i items, %i items remaining.' % (items_cnt, remaining))
 	start += items_cnt
 	if start >= 1000:
 		low_dt = last_dt
 		start = 0
-	while left > 0:
+	while remaining > 0:
 		#try not to hammer the site
 		time.sleep(1)
 		logger.debug('start: %i, limit: %i, low_dt: %s, high_dt: %s' % (start, limit, low_dt, high_dt))
 		left, items, last_dt = scrape(searchApi, start, limit, low_dt, high_dt, db)
 		items_cnt = len(items)
+		remaining = left - start
 		logger.info('Processed %i items, %i items remaining.' % 
-					(items_cnt, left - start))
+					(items_cnt, remaining))
 		start += items_cnt
 		if start >= 1000:
 			low_dt = last_dt
