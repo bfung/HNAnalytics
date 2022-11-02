@@ -14,7 +14,8 @@ requests = "^2.28.0"
 [tool.poetry.group.dev.dependencies]
 black = "^22.10.0"
 flake8-black = "^0.3.3"
-invoke = "^1.7.3"
+mypy = "^0.982"
+types-requests = "^2.28.11.2"
 
 [build-system]
 requires = ["poetry-core"]
