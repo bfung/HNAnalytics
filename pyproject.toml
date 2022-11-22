@@ -10,13 +10,22 @@ packages = [{include = "hn_analytics"}]
 [tool.poetry.dependencies]
 python = "^3.10"
 requests = "^2.28.0"
+sqlalchemy = "^1.4.44"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.10.0"
 flake8-black = "^0.3.3"
 mypy = "^0.982"
 types-requests = "^2.28.11.2"
+sqlalchemy-stubs = "^0.4"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+plugins = "sqlmypy"
+
+[[tool.mypy.overrides]]
+module = "sqlalchemy.future"
+ignore_missing_imports = true

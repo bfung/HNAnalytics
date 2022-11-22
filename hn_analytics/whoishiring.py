@@ -1,75 +1,118 @@
 #!/usr/bin/env python
 
+from dataclasses import dataclass
+import re
 import requests
-import sqlite3
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-SCRAPE_SCHEMA = [
-    """CREATE TABLE IF NOT EXISTS scrape_users (
-        id TEXT,
-        json TEXT,
-        scrape_time TEXT DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT pk_id_scrape_time PRIMARY KEY (id, scrape_time)
-          ON CONFLICT ABORT
-       ) STRICT;
-    """,
-    """CREATE TABLE IF NOT EXISTS scrape_items (
-        id TEXT,
-        json TEXT,
-        scrape_time TEXT DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT pk_id_scrape_time PRIMARY KEY (id, scrape_time)
-          ON CONFLICT ABORT
-       ) STRICT;
-    """,
-]
+from sqlalchemy import (
+    create_engine,
+    func,
+    select,
+    insert,
+    Table,
+    Column,
+    String,
+    DateTime,
+    MetaData,
+)
+from sqlalchemy.future import Engine
 
 
-def run_migration(dbname: str):
-    with sqlite3.connect(dbname) as con:
-        for ddl in SCRAPE_SCHEMA:
-            con.execute(ddl)
+METADATA_OBJ = MetaData()
+
+TBL_SCRAPE_USERS = Table(
+    "scrape_users",
+    METADATA_OBJ,
+    Column("id", String, primary_key=True, autoincrement=False),
+    Column("json", String),
+    Column(
+        "scrape_time",
+        DateTime,
+        primary_key=True,
+        autoincrement=False,
+        default=datetime.utcnow(),
+    ),
+)
 
 
-def scrape_user(user_id: str, dbname: str):
-    con = sqlite3.connect(dbname, detect_types=sqlite3.PARSE_DECLTYPES)
+@dataclass
+class ScrapedUser:
+    id: str
+    json: str
+    scrape_time: datetime = datetime.utcnow()
 
+
+def validateDbName(dbname: str) -> str:
+    """
+    Throws ValueError if dbname is not alphanumeric.
+    """
+    match = re.match(r"\w+", dbname)
+    if not match:
+        raise ValueError(f"dbname '{dbname}' is not alphanumeric!")
+    return dbname
+
+
+def init_db(dbname: str, echo=False) -> Engine:
+    validated = validateDbName(dbname)
+    engine = create_engine(f"sqlite+pysqlite:///{validated}", echo=echo, future=True)
+    METADATA_OBJ.create_all(engine)
+    return engine
+
+
+def should_scrape(user_id: str, engine: Engine) -> bool:
     last_scape_time = None
-    with con:
-        max = con.execute(
-            "SELECT max(scrape_time) FROM scrape_users where id = ?", (user_id,)
+    with engine.connect() as conn:
+        alias = "last_scraped_time"
+        result = conn.execute(
+            select(func.max(TBL_SCRAPE_USERS.c.scrape_time).label(alias)).where(
+                TBL_SCRAPE_USERS.c.id == user_id
+            )
         )
-        row = max.fetchone()
-        if row[0]:
-            last_scape_time = datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S.%f%z")
-            print(f"Last scraped: {last_scape_time}")
-        else:
-            print("No existing records")
+        row = result.first()
+        last_scape_time = row[alias]
 
     if last_scape_time:
-        elapsed = datetime.now(timezone.utc) - last_scape_time
+        elapsed = datetime.utcnow() - last_scape_time
         if elapsed < timedelta(days=14):
             print("Update too early, run this again in a week.")
-            return
+            return False
 
-    user_url = f"https://hacker-news.firebaseio.com/v0/user/{user_id}.json"
-    r = requests.get(user_url)
+    return True
 
-    try:
-        with con:
-            con.execute(
-                "INSERT INTO scrape_users (id, json, scrape_time) VALUES (?, ?, ?)",
-                (user_id, r.text, datetime.now(timezone.utc).isoformat()),
-            )
-    except sqlite3.Error as e:
-        print(e)
-    finally:
-        con.close()
+
+def scrape_user(user_id: str, engine: Engine) -> ScrapedUser:
+    scraped_user = None
+    stmt = (
+        select(TBL_SCRAPE_USERS.columns)
+        .where(TBL_SCRAPE_USERS.c.id == user_id)
+        .order_by(TBL_SCRAPE_USERS.c.scrape_time.desc())
+        .limit(1)
+    )
+    if should_scrape(user_id, engine):
+        user_url = f"https://hacker-news.firebaseio.com/v0/user/{user_id}.json"
+        r = requests.get(user_url)
+
+        with engine.connect() as conn:
+            conn.execute(insert(TBL_SCRAPE_USERS).values(id=user_id, json=r.text))
+            conn.commit()
+            q = conn.execute(stmt).one()
+            scraped_user = ScrapedUser(q[0], q[1], q[2])
+    else:
+        with engine.connect() as conn:
+            q = conn.execute(stmt).one()
+            scraped_user = ScrapedUser(q[0], q[1], q[2])
+
+    return scraped_user
 
 
 def main():
-    run_migration("whoishiring.db")
-    scrape_user("whoishiring", "whoishiring.db")
+    engine = init_db("whoishiring.db")
+    scraped_user = scrape_user("whoishiring", engine)
+    print(scraped_user)
+
+    #update_scrape_item_queue(scraped_user.json, engine)
 
 
 if __name__ == "__main__":
