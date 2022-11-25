@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 from dataclasses import dataclass
+import json
 import re
+from typing import List
 import requests
 
 from datetime import datetime, timedelta
@@ -37,11 +39,33 @@ TBL_SCRAPE_USERS = Table(
 )
 
 
-@dataclass
-class ScrapedUser:
-    id: str
-    json: str
-    scrape_time: datetime = datetime.utcnow()
+class ScrapedUser():
+
+    def __init__(self, id: str, json_str: str, scrape_time: datetime = datetime.utcnow()) -> None:
+        self._id = id
+        self._scrape_time = scrape_time
+
+        j = json.loads(json_str)
+        self._about = j["about"]
+        self._created = datetime.utcfromtimestamp(j["created"])
+        self._karma = j["karma"]
+        self._submitted = j["submitted"]
+
+    @property
+    def about(self) -> str:
+        return self._about
+
+    @property
+    def created(self) -> datetime:
+        return self._created 
+
+    @property
+    def karma(self) -> int:
+        return self._karma
+
+    @property
+    def submitted(self) -> List[int]:
+        return self._submitted
 
 
 def validateDbName(dbname: str) -> str:
@@ -61,7 +85,7 @@ def init_db(dbname: str, echo=False) -> Engine:
     return engine
 
 
-def should_scrape(user_id: str, engine: Engine) -> bool:
+def should_scrape_user(user_id: str, engine: Engine) -> bool:
     last_scape_time = None
     with engine.connect() as conn:
         alias = "last_scraped_time"
@@ -76,7 +100,7 @@ def should_scrape(user_id: str, engine: Engine) -> bool:
     if last_scape_time:
         elapsed = datetime.utcnow() - last_scape_time
         if elapsed < timedelta(days=14):
-            print("Update too early, run this again in a week.")
+            print("No need to scrape right now. Try again in two weeks.")
             return False
 
     return True
@@ -90,7 +114,7 @@ def scrape_user(user_id: str, engine: Engine) -> ScrapedUser:
         .order_by(TBL_SCRAPE_USERS.c.scrape_time.desc())
         .limit(1)
     )
-    if should_scrape(user_id, engine):
+    if should_scrape_user(user_id, engine):
         user_url = f"https://hacker-news.firebaseio.com/v0/user/{user_id}.json"
         r = requests.get(user_url)
 
@@ -110,7 +134,7 @@ def scrape_user(user_id: str, engine: Engine) -> ScrapedUser:
 def main():
     engine = init_db("whoishiring.db")
     scraped_user = scrape_user("whoishiring", engine)
-    print(scraped_user)
+    print(scraped_user.submitted)
 
     #update_scrape_item_queue(scraped_user.json, engine)
 
