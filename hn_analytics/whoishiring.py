@@ -104,7 +104,7 @@ class ScrapedItem:
         self._deleted = j.get("deleted")  # in the hn API spec, but never in the data!
         self._type = j["type"]
         self._by = j.get("by")
-        self._time = datetime.utcfromtimestamp(j.get("time")) if j.get("time") else None
+        self._time = datetime.utcfromtimestamp(j["time"])
         self._text = j.get("text")
         self._dead = j.get("dead") if j.get("dead") else False
         self._kids = j.get("kids")  # not available in all item types
@@ -142,6 +142,9 @@ class ScrapedItem:
     @property
     def decendants(self) -> int | None:
         return self._decendants
+
+    def __repr__(self) -> str:
+        return f"ScrapedItem[id: {self._id!r}]"
 
 
 TBL_ANALYTIC_ITEMS = Table(
@@ -283,12 +286,14 @@ async def scrape_item(item_id: int, engine: Engine) -> ScrapedItem | None:
     with engine.connect() as conn:
         conn.execute(
             update(TBL_SCRAPE_ITEMS)
-            .where(TBL_SCRAPE_ITEMS.c.id == item_id)
+            .where(TBL_SCRAPE_ITEMS.c.id == str(item_id))
             .values(json=r.text, scrape_time=datetime.utcnow())
         )
         conn.commit()
         q = conn.execute(
-            select(TBL_SCRAPE_ITEMS.columns).where(TBL_SCRAPE_ITEMS.c.id == item_id)
+            select(TBL_SCRAPE_ITEMS.columns).where(
+                TBL_SCRAPE_ITEMS.c.id == str(item_id)
+            )
         ).one()
         item = ScrapedItem(q[0], q[1], q[2])
 
@@ -314,7 +319,11 @@ def scrape_2_analytic_items(engine: Engine) -> List[AnalyticItem]:
         for row in result:
             items.append(ScrapedItem(row[0], row[1], row[2]))
 
+    # 'dead' should probably be a column in the db.
     analytic_items = [AnalyticItem(x) for x in items if not x.dead]
+    if len(analytic_items) < 1:
+        return []
+
     with engine.connect() as conn:
         conn.execute(
             insert(TBL_ANALYTIC_ITEMS)
@@ -336,7 +345,7 @@ def scrape_2_analytic_items(engine: Engine) -> List[AnalyticItem]:
 
 
 async def main():
-    engine = init_db("whoishiring.db", echo=True)
+    engine = init_db("whoishiring.db")
     users = ["whoishiring", "_whoishiring"]
     for user in users:
         scraped_user = scrape_user(user, engine)
@@ -344,6 +353,10 @@ async def main():
         print(f"There are {len(items)} items to scrape.")
 
         await scrape_items(items, engine)
+
+    # one offs
+    items = queue_items([2719028, 3300290], engine)
+    await scrape_items(items, engine)
 
     analytic_items = scrape_2_analytic_items(engine)
     print(f"Processed {len(analytic_items)} analytic items")
