@@ -1,15 +1,13 @@
-.PHONY: scrape lint black flake8 mypy
+.PHONY: run test fmt tidy
 
-scrape:
-	poetry run python hn_analytics/whoishiring.py
+run:
+	go run ./cmd/hnanalytics
 
-lint: black flake8 mypy
+test:
+	go test ./...
 
-black:
-	poetry run black hn_analytics/
+fmt:
+	gofmt -w ./cmd ./internal
 
-flake8:
-	poetry run flake8 hn_analytics/
-
-mypy:
-	poetry run mypy hn_analytics/
+tidy:
+	go mod tidy
