@@ -35,6 +35,13 @@ type dataStore struct {
 	ScrapeUsers   map[string][]userRecord `json:"scrape_users"`
 	ScrapeItems   map[int]itemRecord      `json:"scrape_items"`
 	AnalyticItems map[int]AnalyticItem    `json:"analytic_items"`
+	Checkpoints   map[string]Checkpoint   `json:"checkpoints"`
+}
+
+type Checkpoint struct {
+	Time      time.Time `json:"time"`
+	ID        int       `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type userRecord struct {
@@ -116,6 +123,7 @@ func NewService(_ context.Context, dbName string) (*Service, error) {
 			ScrapeUsers:   map[string][]userRecord{},
 			ScrapeItems:   map[int]itemRecord{},
 			AnalyticItems: map[int]AnalyticItem{},
+			Checkpoints:   map[string]Checkpoint{},
 		},
 	}
 
@@ -136,7 +144,24 @@ func (s *Service) load() error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(content, &s.store)
+	if err := json.Unmarshal(content, &s.store); err != nil {
+		return err
+	}
+
+	if s.store.ScrapeUsers == nil {
+		s.store.ScrapeUsers = map[string][]userRecord{}
+	}
+	if s.store.ScrapeItems == nil {
+		s.store.ScrapeItems = map[int]itemRecord{}
+	}
+	if s.store.AnalyticItems == nil {
+		s.store.AnalyticItems = map[int]AnalyticItem{}
+	}
+	if s.store.Checkpoints == nil {
+		s.store.Checkpoints = map[string]Checkpoint{}
+	}
+
+	return nil
 }
 
 func (s *Service) persist() error {
@@ -299,11 +324,14 @@ func (s *Service) ScrapeToAnalyticItems(_ context.Context) ([]AnalyticItem, erro
 }
 
 func toAnalyticItem(item Item) AnalyticItem {
-	kidsCount := len(item.Kids)
+	return AnalyticItemFromFields(item.ID, item.Time, item.Title, len(item.Kids))
+}
+
+func AnalyticItemFromFields(id int, createTime time.Time, title *string, kidsCount int) AnalyticItem {
 	whType := "other"
 
-	if item.Title != nil {
-		title := strings.ToLower(*item.Title)
+	if title != nil {
+		title := strings.ToLower(*title)
 		switch {
 		case strings.HasPrefix(title, freelancerTitle):
 			whType = "freelancer"
@@ -314,7 +342,38 @@ func toAnalyticItem(item Item) AnalyticItem {
 		}
 	}
 
-	return AnalyticItem{ID: item.ID, CreateTime: item.Time, WHType: whType, NumKids: kidsCount}
+	return AnalyticItem{ID: id, CreateTime: createTime, WHType: whType, NumKids: kidsCount}
+}
+
+func (s *Service) UpsertAnalyticItems(_ context.Context, items []AnalyticItem) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := 0
+	for _, item := range items {
+		if _, exists := s.store.AnalyticItems[item.ID]; !exists {
+			count++
+		}
+		s.store.AnalyticItems[item.ID] = item
+	}
+
+	return count
+}
+
+func (s *Service) GetCheckpoint(_ context.Context, key string) (Checkpoint, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cp, ok := s.store.Checkpoints[key]
+	return cp, ok
+}
+
+func (s *Service) SetCheckpoint(_ context.Context, key string, checkpoint Checkpoint) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	checkpoint.UpdatedAt = time.Now().UTC()
+	s.store.Checkpoints[key] = checkpoint
 }
 
 func (s *Service) fetch(ctx context.Context, url string) ([]byte, error) {

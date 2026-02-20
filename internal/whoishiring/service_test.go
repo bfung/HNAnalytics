@@ -1,6 +1,8 @@
 package whoishiring
 
 import (
+	"context"
+	"os"
 	"testing"
 	"time"
 )
@@ -35,5 +37,37 @@ func TestToAnalyticItem(t *testing.T) {
 	}
 	if analytic.NumKids != 3 {
 		t.Fatalf("expected 3 kids, got %d", analytic.NumKids)
+	}
+}
+
+func TestUpsertAnalyticItemsAndCheckpoint(t *testing.T) {
+	dir := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	svc, err := NewService(context.Background(), "testdb")
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+
+	inserted := svc.UpsertAnalyticItems(context.Background(), []AnalyticItem{{ID: 1}, {ID: 1}})
+	if inserted != 1 {
+		t.Fatalf("expected 1 new insert, got %d", inserted)
+	}
+
+	svc.SetCheckpoint(context.Background(), "bigquery", Checkpoint{ID: 10, Time: time.Unix(100, 0).UTC()})
+	cp, ok := svc.GetCheckpoint(context.Background(), "bigquery")
+	if !ok {
+		t.Fatal("expected checkpoint to exist")
+	}
+	if cp.ID != 10 {
+		t.Fatalf("expected checkpoint id 10, got %d", cp.ID)
 	}
 }
